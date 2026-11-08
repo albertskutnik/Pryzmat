@@ -1,0 +1,42 @@
+Vagrant.configure("2") do |config|
+    config.vm.synced_folder ".", "/vagrant"
+
+    config.vm.define "kali" do |kali|
+        kali.vm.box = "kalilinux/rolling"
+        kali.vm.network "private_network", ip: "192.168.56.10", virtualbox__intnet: "pryzmat"
+
+        kali.vm.provider "virtualbox" do |vb|
+            vb.memory = 2048
+            vb.cpus = 2
+        end
+
+        kali.vm.provision "shell", run: "always", inline: <<-SHELL
+            set -e
+            nmcli connection modify "Wired connection 2" connection.interface-name eth1 connection.autoconnect yes ipv4.method manual ipv4.addresses 192.168.56.10/24 ipv4.never-default yes
+            nmcli connection up "Wired connection 2" ifname eth1
+        SHELL
+    end
+
+    config.vm.define "ubuntu" do |ubuntu|
+        ubuntu.vm.box = "bento/ubuntu-24.04"
+        ubuntu.vm.network "private_network", ip: "192.168.56.20", virtualbox__intnet: "pryzmat"
+
+        ubuntu.vm.provider "virtualbox" do |vb|
+            vb.memory = 2048
+            vb.cpus = 2
+        end
+
+        ubuntu.vm.provision "shell", inline: <<-SHELL
+            set -e
+
+            apt-get update && apt-get install -y docker.io
+            systemctl enable --now docker
+            usermod -aG docker vagrant
+
+            docker build -t pryzmat-log4shell-demo /vagrant/log4shell-demo
+
+            docker container inspect log4shell-demo >/dev/null 2>&1 || docker run -d --name log4shell-demo --restart unless-stopped -p 8080:8080 pryzmat-log4shell-demo
+            docker start log4shell-demo 2>/dev/null || true
+        SHELL
+    end
+end
